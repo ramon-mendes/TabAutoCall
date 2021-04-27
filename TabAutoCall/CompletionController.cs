@@ -184,21 +184,23 @@ namespace TabAutoCall
 
 						_state._activeSession.Dismissed += (object sender, EventArgs e) =>
 						{
-							string completionText = _state._activeSession.SelectedCompletionSet.SelectionStatus.Completion.DisplayText;
-							var applic = _state._activeSession.SelectedCompletionSet.ApplicableTo;
-
-							Dispatcher.CurrentDispatcher.InvokeAsync(() =>
+							if(_state._activeSession.SelectedCompletionSet.SelectionStatus.Completion != null)
 							{
-								CaretPosition pos = TextView.Caret.Position;
-								if(pos.BufferPosition.Position != 0)
-								{
-									string wordString = applic.GetText(applic.TextBuffer.CurrentSnapshot);
+								string completionText = _state._activeSession.SelectedCompletionSet.SelectionStatus.Completion.DisplayText;
+								var applic = _state._activeSession.SelectedCompletionSet.ApplicableTo;
 
-									if(wordString == completionText)
-										_state._justCompletedFunc = true;
-								}
-							}, DispatcherPriority.ApplicationIdle);
+								ThreadHelper.JoinableTaskFactory.Run(async delegate {
+									CaretPosition pos = TextView.Caret.Position;
+									if(pos.BufferPosition.Position != 0)
+									{
+										string wordString = applic.GetText(applic.TextBuffer.CurrentSnapshot);
 
+										if(wordString == completionText)
+											_state._justCompletedFunc = true;
+									}
+								});
+							}
+							
 							_state._activeSession = null;
 						};
 					}
