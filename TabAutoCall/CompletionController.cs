@@ -26,7 +26,7 @@ using System.Windows.Threading;
 
 namespace TabAutoCall
 {
-    [Export(typeof(IWpfTextViewConnectionListener))]
+	[Export(typeof(IWpfTextViewConnectionListener))]
 	[ContentType("text")]
 	[TextViewRole(PredefinedTextViewRoles.Interactive)]
 	internal class CompletionController : IWpfTextViewConnectionListener
@@ -103,11 +103,11 @@ namespace TabAutoCall
 
 		public CommandFilterHighPriority(TrackState state, ITextView textView, IVsTextView textViewAdapter, SVsServiceProvider service, ICompletionBroker broker)
 		{
-			ThreadHelper.JoinableTaskFactory.Run(async delegate {
-				await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+			Dispatcher.CurrentDispatcher.InvokeAsync(() =>
+			{
 				// needed, else you don't catch AUTOCOMPLETE/COMPLETEWORD
 				ErrorHandler.ThrowOnFailure(textViewAdapter.AddCommandFilter(this, out _nextCommandTarget));
-			});
+			}, DispatcherPriority.ApplicationIdle);// needed, else you don't catch AUTOCOMPLETE/COMPLETEWORD
 
 			_state = state;
 			TextView = textView;
@@ -134,7 +134,8 @@ namespace TabAutoCall
 						Check4Session();
 
 						// detects if it autocompleted
-						ThreadHelper.JoinableTaskFactory.Run(async delegate {
+						ThreadHelper.JoinableTaskFactory.Run(async delegate
+						{
 							await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 							var vafter = TextView.TextSnapshot.Version;
 							if(vbefore != vafter)
@@ -160,52 +161,63 @@ namespace TabAutoCall
 		{
 			if(_state._activeSession != null)
 			{
-				var sessions = Broker.GetSessions(TextView);
+				var sessions2 = Broker.GetSessions(TextView);
+				Debug.Assert(sessions2.Count <= 1);
+				
+				if(!_state._activeSession.IsDismissed)
+				{
+					return;
+				}
 				//Debug.Assert(sessions[0] == _state._activeSession);
 			}
-			else
+
+			var sessions = Broker.GetSessions(TextView);
+			Debug.Assert(sessions.Count <= 1);
+
+			if(sessions.Count != 0)
 			{
-				var sessions = Broker.GetSessions(TextView);
-				Debug.Assert(sessions.Count <= 1);
+				var selection = TextView.BufferGraph.MapDownToInsertionPoint(TextView.Caret.Position.BufferPosition, PointTrackingMode.Positive,
+					ts => CompletionController.SupportedContentTypes.Contains(ts.ContentType.TypeName, StringComparer.OrdinalIgnoreCase));
 
-				if(sessions.Count != 0)
+				if(selection.HasValue)
 				{
-					var selection = TextView.BufferGraph.MapDownToInsertionPoint(TextView.Caret.Position.BufferPosition, PointTrackingMode.Positive,
-						ts => CompletionController.SupportedContentTypes.Contains(ts.ContentType.TypeName, StringComparer.OrdinalIgnoreCase));
-
-					if(selection.HasValue)
+					if(_state._activeSession == sessions[0])
 					{
-						_state._activeSession = sessions[0];
-						_state._activeSession.Committed += (object sender, EventArgs e) =>
-						{
-							// is never called for C# editor
-							// but does works for other editors
-							_state._justCompletedFunc = true;
-						};
-
-						_state._activeSession.Dismissed += (object sender, EventArgs e) =>
-						{
-							if(_state._activeSession.SelectedCompletionSet.SelectionStatus.Completion != null)
-							{
-								string completionText = _state._activeSession.SelectedCompletionSet.SelectionStatus.Completion.DisplayText;
-								var applic = _state._activeSession.SelectedCompletionSet.ApplicableTo;
-
-								ThreadHelper.JoinableTaskFactory.Run(async delegate {
-									CaretPosition pos = TextView.Caret.Position;
-									if(pos.BufferPosition.Position != 0)
-									{
-										string wordString = applic.GetText(applic.TextBuffer.CurrentSnapshot);
-
-										if(wordString == completionText)
-											_state._justCompletedFunc = true;
-									}
-								});
-							}
-							
-							_state._activeSession = null;
-						};
+						return;
 					}
-				}
+
+					_state._activeSession = sessions[0];
+					Debug.WriteLine("Check4Session");
+					_state._activeSession.Committed += OnCommitted;
+					_state._activeSession.Dismissed += OnDismissed;
+				};
+			}
+		}
+
+		public void OnCommitted(object sender, EventArgs e)
+		{
+			// is never called for C# editor
+			// but does works for other editors
+			_state._justCompletedFunc = true;
+		}
+		public void OnDismissed(object sender, EventArgs e)
+		{
+			if(_state._activeSession.SelectedCompletionSet.SelectionStatus.Completion != null)
+			{
+				string completionText = _state._activeSession.SelectedCompletionSet.SelectionStatus.Completion.DisplayText;
+				var applic = _state._activeSession.SelectedCompletionSet.ApplicableTo;
+
+				ThreadHelper.JoinableTaskFactory.Run(async delegate
+				{
+					CaretPosition pos = TextView.Caret.Position;
+					if(pos.BufferPosition.Position != 0)
+					{
+						string wordString = applic.GetText(applic.TextBuffer.CurrentSnapshot);
+
+						if(wordString == completionText)
+							_state._justCompletedFunc = true;
+					}
+				});
 			}
 		}
 
@@ -214,6 +226,7 @@ namespace TabAutoCall
 			return _nextCommandTarget.QueryStatus(pguidCmdGroup, cCmds, prgCmds, pCmdText);
 		}
 	}
+
 
 	internal class CommandFilter : IOleCommandTarget
 	{
@@ -231,7 +244,7 @@ namespace TabAutoCall
 		{
 			ErrorHandler.ThrowOnFailure(textViewAdapter.AddCommandFilter(this, out _nextCommandTarget));
 
-			if(DTE==null)
+			if(DTE == null)
 			{
 				DTE = service.GetService(typeof(DTE)) as DTE2;
 			}
@@ -270,10 +283,10 @@ namespace TabAutoCall
 		{
 			if(VsShellUtilities.IsInAutomationFunction(Service))
 				return _nextCommandTarget.Exec(ref pguidCmdGroup, nCmdID, nCmdexecopt, pvaIn, pvaOut);
-			
+
 			if(pguidCmdGroup == VSConstants.VSStd2K)
 			{
-				switch((VSConstants.VSStd2KCmdID) nCmdID)
+				switch((VSConstants.VSStd2KCmdID)nCmdID)
 				{
 					case VSConstants.VSStd2KCmdID.TAB:
 						if(_state._justCompletedFunc)
@@ -298,7 +311,7 @@ namespace TabAutoCall
 								Span.FromBounds(caret + 1, caret_pos.GetContainingLine().End.Position), SpanTrackingMode.EdgeInclusive
 							);
 
-							TabAutoCallPackage.MenuService.GlobalInvoke(new CommandID(VSConstants.VSStd2K, (int) VSConstants.VSStd2KCmdID.PARAMINFO));
+							TabAutoCallPackage.MenuService.GlobalInvoke(new CommandID(VSConstants.VSStd2K, (int)VSConstants.VSStd2KCmdID.PARAMINFO));
 							return VSConstants.S_OK;
 						}
 						else if(_state._justCompletedAutoBrace)
