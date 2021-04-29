@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="TabAutoCall.Microsoft.7bd37b14-23fc-4db2-a5c7-c46deb6993b3" Version="1.8" Language="en-US" Publisher="MI Software" />
+        <Identity Id="TabAutoCall.Microsoft.7bd37b14-23fc-4db2-a5c7-c46deb6993b3" Version="1.91" Language="en-US" Publisher="MI Software" />
         <DisplayName>TabAutoCall</DisplayName>
         <Description xml:space="preserve">Press TAB after a function call and it will insert () and automatically show signature help. Example: Console.WriteLine -&gt; TAB -&gt; Console.WriteLine(|) -&gt; cursor in middle of parenthesis and signature help popup shown. Visit us at http://misoftware.com.br/</Description>
         <MoreInfo>http://misoftware.com.br/</MoreInfo>

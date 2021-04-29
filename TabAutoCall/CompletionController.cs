@@ -10,6 +10,7 @@ using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;
 using Microsoft.VisualStudio.Text.Operations;
 using Microsoft.VisualStudio.TextManager.Interop;
+using Microsoft.VisualStudio.Threading;
 using Microsoft.VisualStudio.Utilities;
 using System;
 using System.Collections.Generic;
@@ -30,7 +31,7 @@ namespace TabAutoCall
 	[TextViewRole(PredefinedTextViewRoles.Interactive)]
 	internal class CompletionController : IWpfTextViewConnectionListener
 	{
-		public static string[] SupportedContentTypes = new string[] { "CSharp", "C/C++", "Basic", "Javascript" };
+		public static string[] SupportedContentTypes = new string[] { "CSharp", "C/C++", "Basic", "Javascript", "TypeScript" };
 
 		[Import]
 		internal IVsEditorAdaptersFactoryService AdaptersFactory = null;
@@ -102,11 +103,11 @@ namespace TabAutoCall
 
 		public CommandFilterHighPriority(TrackState state, ITextView textView, IVsTextView textViewAdapter, SVsServiceProvider service, ICompletionBroker broker)
 		{
-			Dispatcher.CurrentDispatcher.InvokeAsync(() =>
-			{
+			ThreadHelper.JoinableTaskFactory.Run(async delegate {
+				await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 				// needed, else you don't catch AUTOCOMPLETE/COMPLETEWORD
 				ErrorHandler.ThrowOnFailure(textViewAdapter.AddCommandFilter(this, out _nextCommandTarget));
-			}, DispatcherPriority.ApplicationIdle);// needed, else you don't catch AUTOCOMPLETE/COMPLETEWORD
+			});
 
 			_state = state;
 			TextView = textView;
@@ -133,15 +134,15 @@ namespace TabAutoCall
 						Check4Session();
 
 						// detects if it autocompleted
-						Dispatcher.CurrentDispatcher.InvokeAsync(() =>
-						{
+						ThreadHelper.JoinableTaskFactory.Run(async delegate {
+							await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 							var vafter = TextView.TextSnapshot.Version;
 							if(vbefore != vafter)
 							{
 								_state._justCompletedWordVer = TextView.TextSnapshot.Version;
 								_state._justCompletedFunc = true;
 							}
-						}, DispatcherPriority.ApplicationIdle);
+						});
 
 						return VSConstants.S_OK;
 				}
